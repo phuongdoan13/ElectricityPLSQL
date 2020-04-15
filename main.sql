@@ -7,14 +7,11 @@ SELECT * FROM DBP_MESSAGE_LOG WHERE Student_ID = USER ORDER BY MSG_DATE desc;
 --------------------------------------------------------
 ---- #Create the tables# ----
 DROP TABLE local_rm16;
-CREATE TABLE local_rm16 AS
-    SELECT * FROM v_nem_rm16
-    WHERE ROWNUM < 1;
+CREATE TABLE local_rm16 AS SELECT * FROM v_nem_rm16 WHERE ROWNUM < 1;
 SELECT * FROM local_rm16;
 
 DROP TABLE dbp_parameter;
-CREATE table dbp_parameter AS 
-    SELECT * FROM DBP_ADMIN.dbp_parameter;
+CREATE table dbp_parameter AS SELECT * FROM DBP_ADMIN.dbp_parameter;
 SELECT * FROM dbp_parameter;
 
 DROP TABLE run_table;    
@@ -127,7 +124,18 @@ BEGIN
             dbms_output.put_line('There is an instance running');
 END;
 
-
+CREATE OR REPLACE FUNCTION fetch_Param(p_category U13305952.dbp_parameter.category%TYPE
+                                     , p_code     U13305952.dbp_parameter.code%TYPE)
+RETURN U13305952.dbp_parameter.value%TYPE
+    IS
+    v_value U13305952.dbp_parameter.value%TYPE;
+BEGIN
+    SELECT value INTO v_value 
+        FROM U13305952.dbp_parameter
+        WHERE category = p_category AND code = p_code;
+    
+    RETURN v_value;
+END;
 --------------------------------------------------------
 ---- Testing lines -----
 INSERT INTO run_table(outcome) VALUES('RUNNING'); 
