@@ -77,13 +77,12 @@ BEGIN
 END;
 
 CREATE OR REPLACE PROCEDURE run_New(p_remark IN run_table.remarks%TYPE)
-    IS
-    
+    IS 
+---- Run if there is no active instance ----
     running_interference EXCEPTION;
     v_max_id             run_table.run_id%TYPE;
     v_start_date         local_rm16.day%TYPE;
     v_end_date           local_rm16.day%TYPE;
-    
 BEGIN
     SELECT count(*) INTO v_max_id FROM run_table;
     v_start_date := TRUNC(sysdate);
@@ -104,7 +103,7 @@ END;
 
 CREATE OR REPLACE PROCEDURE run_New
     IS
-    
+---- Run if there is no active instance ----
     running_interference EXCEPTION;
     v_max_id             run_table.run_id%TYPE;
     v_start_date         local_rm16.day%TYPE;
