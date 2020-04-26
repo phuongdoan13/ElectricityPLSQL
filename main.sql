@@ -4,13 +4,13 @@ COMMON.LOG('Final logic');
 END;
 --------------------------------------------------------
 ---- #Create the tables# ----
-DROP TABLE local_rm16;
+-- DROP TABLE local_rm16;
 CREATE TABLE local_rm16 AS SELECT * FROM v_nem_rm16 WHERE ROWNUM < 1;
 --
-DROP TABLE dbp_parameter;
+-- DROP TABLE dbp_parameter;
 CREATE table dbp_parameter AS SELECT * FROM DBP_ADMIN.dbp_parameter WHERE ROWNUM < 1;
 --
-DROP TABLE run_table;    
+-- DROP TABLE run_table;    
 CREATE TABLE run_table(
     RUN_ID NUMBER, 
     RUN_START DATE,
@@ -62,15 +62,17 @@ CREATE OR REPLACE PROCEDURE run_New
     v_end_date           local_rm16.day%TYPE;
 
 BEGIN
-    SELECT count(*) INTO v_max_id FROM run_table;
-    v_start_date := TRUNC(sysdate);
-    v_end_date := v_start_date + 13;
+    
 
     IF is_running()
     THEN
         RAISE running_interference;
     END IF;
-
+    
+    SELECT count(*) INTO v_max_id FROM run_table;
+    v_start_date := TRUNC(sysdate);
+    v_end_date := v_start_date + 13;
+    
     INSERT INTO run_table VALUES (v_max_id + 1, v_start_date, v_end_date, 'RUNNING','');
     
     DELETE FROM local_rm16;  -- Delete current forecast data in local_rm16 
@@ -89,8 +91,8 @@ CREATE OR REPLACE PROCEDURE write_localrm16(p_tni local_rm16.tni%TYPE,
     IS
     -- #Write prediciton into local_rm16 --
 BEGIN
-    INSERT INTO local_rm16(tni, frmp, lr, hh, day, volume) 
-    VALUES (p_tni, p_frmp, p_lr, p_hh, p_day, p_volume);
+    INSERT INTO local_rm16(tni, frmp, lr, hh, day, volume, statement_type, change_date) 
+    VALUES (p_tni, p_frmp, p_lr, p_hh, p_day, p_volume, 'FORECAST', sysdate);
 END;
 --
 CREATE OR REPLACE PROCEDURE calculate_mean(p_tni v_nem_rm16.tni%TYPE,
