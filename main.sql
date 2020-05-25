@@ -3,21 +3,7 @@ BEGIN
 COMMON.LOG('Final logic');
 END;
 --------------------------------------------------------
----- #Create the tables# ----
--- DROP TABLE local_rm16;
-CREATE TABLE local_rm16 AS SELECT * FROM v_nem_rm16 WHERE ROWNUM < 1;
---
--- DROP TABLE dbp_parameter;
-CREATE table dbp_parameter AS SELECT * FROM DBP_ADMIN.dbp_parameter WHERE ROWNUM < 1;
---
--- DROP TABLE run_table;    
-CREATE TABLE run_table(
-    RUN_ID NUMBER, 
-    RUN_START DATE,
-    RUN_END DATE,
-    OUTCOME VARCHAR2(15), --Assume that there are three values 'RUNNING', 'FINISHED' or NUll 
-    REMARKS VARCHAR2(255)
-);
+
 --------------------------------------------------------
 ---- #Procedures and Functions# ----
 CREATE OR REPLACE  FUNCTION fetch_Param(p_category U13305952.dbp_parameter.category%TYPE
@@ -27,61 +13,12 @@ RETURN U13305952.dbp_parameter.value%TYPE
     v_value U13305952.dbp_parameter.value%TYPE;
 BEGIN
     SELECT value INTO v_value 
-        FROM U13305952.dbp_parameter
+        FROM dbp_parameter
         WHERE category = p_category AND code = p_code;
 
     RETURN v_value;
 END;
---
-CREATE OR REPLACE FUNCTION is_Running
-RETURN BOOLEAN 
-    IS
-    -- #Check if the there is an active instance --
-    no_rows  run_table.run_id%TYPE;
-    v_outcome run_table.outcome%TYPE;        
-BEGIN
-    SELECT count(*) INTO no_rows FROM run_table; 
 
-    IF no_rows = 0
-    THEN
-        RETURN FALSE;
-    ELSE
-    SELECT outcome INTO v_outcome 
-        FROM run_table
-        WHERE ROWID = (SELECT MAX(ROWID) FROM run_table);
-        RETURN v_outcome = 'RUNNING';
-    END IF;
-END;
---
-CREATE OR REPLACE PROCEDURE run_New
-    IS
-    -- #Run if there is no active instance --
-    running_interference EXCEPTION;
-    v_max_id             run_table.run_id%TYPE;
-    v_start_date         local_rm16.day%TYPE;
-    v_end_date           local_rm16.day%TYPE;
-
-BEGIN
-    
-
-    IF is_running()
-    THEN
-        RAISE running_interference;
-    END IF;
-    
-    SELECT count(*) INTO v_max_id FROM run_table;
-    v_start_date := TRUNC(sysdate);
-    v_end_date := v_start_date + 13;
-    
-    INSERT INTO run_table VALUES (v_max_id + 1, v_start_date, v_end_date, 'RUNNING','');
-    
-    DELETE FROM local_rm16;  -- Delete current forecast data in local_rm16 
-
-    EXCEPTION
-        WHEN running_interference THEN
-            dbms_output.put_line('There is an instance running');
-END;
---
 CREATE OR REPLACE PROCEDURE write_localrm16(p_tni local_rm16.tni%TYPE,
                                             p_frmp local_rm16.frmp%TYPE,
                                             p_lr local_rm16.lr%TYPE,
@@ -94,13 +31,13 @@ BEGIN
     INSERT INTO local_rm16(tni, frmp, lr, hh, day, volume, statement_type, change_date) 
     VALUES (p_tni, p_frmp, p_lr, p_hh, p_day, p_volume, 'FORECAST', sysdate);
 END;
---
+
 CREATE OR REPLACE PROCEDURE calculate_mean(p_tni v_nem_rm16.tni%TYPE,
-                                                   p_frmp v_nem_rm16.frmp%TYPE,
-                                                   p_lr v_nem_rm16.lr%TYPE,
-                                                   p_hh v_nem_rm16.hh%TYPE,
-                                                   p_day v_nem_rm16.day%TYPE,
-                                                   p_dotw varchar2)
+                                           p_frmp v_nem_rm16.frmp%TYPE,
+                                           p_lr v_nem_rm16.lr%TYPE,
+                                           p_hh v_nem_rm16.hh%TYPE,
+                                           p_day v_nem_rm16.day%TYPE,
+                                           p_dotw varchar2)
     IS
     -- #Calculate the mean volume for a specific combination --
     v_mean v_nem_rm16.volume%TYPE;
@@ -112,12 +49,12 @@ BEGIN
     AND frmp = p_frmp
     AND lr = p_lr
     AND hh = p_hh
-    AND TO_CHAR(day, 'dy') = p_dotw
+    AND TO_CHAR(day, 'DY') = p_dotw
     AND day NOT IN (SELECT * FROM dbp_holiday);
 
     write_localrm16(p_tni, p_frmp, p_lr, p_hh, p_day, v_mean);
 END;  
---
+
 CREATE OR REPLACE PROCEDURE calculate_holiday_mean(p_tni v_nem_rm16.tni%TYPE,
                                                    p_frmp v_nem_rm16.frmp%TYPE,
                                                    p_lr v_nem_rm16.lr%TYPE,
@@ -130,7 +67,11 @@ CREATE OR REPLACE PROCEDURE calculate_holiday_mean(p_tni v_nem_rm16.tni%TYPE,
 BEGIN
     SELECT count(*) INTO v_count_holiday
     FROM v_nem_rm16
-    WHERE day IN (SELECT * FROM dbp_holiday);
+    WHERE day IN (SELECT * FROM dbp_holiday)
+    AND tni = p_tni
+    AND frmp = p_frmp
+    AND lr = p_lr
+    AND hh = p_hh;
     
     IF (v_count_holiday > 0)
     THEN
@@ -150,12 +91,12 @@ BEGIN
         AND frmp = p_frmp
         AND lr = p_lr
         AND hh = p_hh
-        AND TO_CHAR(day, 'dy') = 'SUN' ;
+        AND TO_CHAR(day, 'DY') = 'SUN' ;
     END IF;
     
     write_localrm16(p_tni, p_frmp, p_lr, p_hh, p_day, v_mean);
 END; 
---
+
 CREATE OR REPLACE FUNCTION is_Holiday(p_date DATE)
 RETURN BOOLEAN
     IS
@@ -168,7 +109,7 @@ BEGIN
 
     RETURN v_count = 1;
 END;
---
+
 CREATE OR REPLACE PROCEDURE predict
     IS
     -- #Predict for all the combinations in the next 14 days --
@@ -177,8 +118,8 @@ CREATE OR REPLACE PROCEDURE predict
     CURSOR c_combinations IS 
         SELECT DISTINCT tni, frmp, lr, hh FROM v_nem_rm16;
     v_mean v_nem_rm16.VOLUME % TYPE;
-
 BEGIN
+    TRUNCATE TABLE local_rm16;
     WHILE v_counter < 14
     LOOP
         v_current := v_current + v_counter;
@@ -188,29 +129,137 @@ BEGIN
             THEN
                 calculate_holiday_mean(p_tni => r_combi.tni,  p_frmp => r_combi.frmp, p_lr => r_combi.lr, p_hh => r_combi.hh, p_day => v_current);
             ELSE
-                calculate_mean(p_tni => r_combi.tni,  p_frmp => r_combi.frmp, p_lr => r_combi.lr, p_hh => r_combi.hh, p_day => v_current, p_dotw => TO_CHAR(v_current, 'dy'));
+                calculate_mean(p_tni => r_combi.tni,  p_frmp => r_combi.frmp, p_lr => r_combi.lr, p_hh => r_combi.hh, p_day => v_current, p_dotw => TO_CHAR(v_current, 'DY'));
             END IF;           
         END LOOP;
         v_counter := v_counter + 1;
     END LOOP;
 END;
+
 --
-CREATE OR REPLACE PROCEDURE finish_New
-    IS
-    -- #Update the outcome status of active instance to 'FINISHED'
-BEGIN
-    UPDATE run_table
-    SET
-        outcome = 'FINISHED'
-    WHERE 
-        ROWID = (SELECT MAX(ROWID) FROM run_table);
-END;
---
-CREATE OR REPLACE PROCEDURE main
+create sequence seq_runlog start with 1 maxvalue 999999999 increment by 1; 
+CREATE OR REPLACE PROCEDURE RM16_forecast
     IS
     -- #Main --
-BEGIN
-    run_New();
+
+    v_runTableRec run_table%ROWTYPE;
+    v_runTableID NUMBER; 
+    const_RunBuffer CONSTANT NUMBER := 1;
+    moduleRan EXCEPTION;
+BEGIN    
+    BEGIN
+        SELECT * INTO v_runtablerec
+        FROM run_table
+        WHERE 
+            outcome = 'SUCCESS'
+        AND run_end > (sysdate - const_RunBuffer);
+        
+        RAISE moduleRan; 
+        -- If the code reaches this line, that means there might be a run in the last 24 hours
+        
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                SELECT seq_runlog.NEXTVAL INTO v_runTableID FROM dual;
+                INSERT INTO run_table(run_id, run_start, run_end, outcome, remarks)
+                VALUES (v_runTableID, sysdate, NULL, NULL, 'Start Program');
+    END;
+    
+    -- main --
     predict();
-    finish_New();
+    --
+    
+    UPDATE run_table
+    SET run_end = sysdate,
+        outcome = 'SUCCESS',
+        remarks = 'Run completed successfully'
+    WHERE run_id = v_runTableID;
+    
+    EXCEPTION 
+        WHEN moduleRan THEN
+        DBMS_OUTPUT.put_line('Check the RUN_LOG. Module ran in the last hour, handled in main block');
 END;
+
+
+EXEC RM16_forecast();
+
+set serveroutput on;
+DECLARE
+  Ctx               DBMS_XMLGEN.ctxHandle;
+  xml               CLOB := NULL;
+  temp_xml          CLOB := NULL;
+  v_query_date      varchar2(25) := To_char(sysdate);
+  QUERY    VARCHAR2(2000) := 'SELECT tni, sum(volume) tni_total 
+                              FROM local_rm16
+                              WHERE DAY = '''||v_query_date||''' GROUP BY tni';
+BEGIN
+dbms_output.put_line(query);
+   Ctx := DBMS_XMLGEN.newContext(QUERY);
+   DBMS_XMLGen.setRowsetTag( Ctx, 'ROWSETTAG' );
+   DBMS_XMLGen.setRowTag( Ctx, 'ROWTAG' );
+   temp_xml := DBMS_XMLGEN.getXML(Ctx);
+--
+        IF temp_xml IS NOT NULL THEN
+            IF xml IS NOT NULL THEN
+                DBMS_LOB.APPEND( xml, temp_xml );
+            ELSE
+                xml := temp_xml;
+            END IF;
+        END IF;
+--
+        DBMS_XMLGEN.closeContext( Ctx );
+        dbms_output.put_line(xml);
+end;
+
+
+DROP DIRECTORY S13305952_DIR;
+CREATE DIRECTORY S13305952_DIR AS '/exports/orcloz';
+
+DECLARE 
+    v_file  utl_file.file_type;
+    v_date  VARCHAR2(20) := TO_CHAR(sysdate, 'DD-MON-YYYY');
+BEGIN
+    v_file := utl_file.fopen('S13305952_DIR', 'laurie.txt', 'W');
+    utl_file.put_line(v_file, 'LOL');
+    utl_file.fclose(v_file);
+    EXCEPTION
+        WHEN OTHERs Then
+            utl_file.fclose(v_file);
+END;
+set serveroutput on;
+
+
+
+
+
+
+
+
+
+
+DECLARE
+  Ctx               DBMS_XMLGEN.ctxHandle;
+  xml               CLOB := NULL;
+  temp_xml          CLOB := NULL;
+  v_query_date      varchar2(25) := sysdate + 1;
+  QUERY    VARCHAR2(2000) := 'SELECT tni, sum(volume) tni_total 
+                              FROM local_rm16
+                              WHERE DAY = '''||v_query_date||''' GROUP BY tni';
+BEGIN
+dbms_output.put_line(query);
+   Ctx := DBMS_XMLGEN.newContext(QUERY);
+   DBMS_XMLGen.setRowsetTag( Ctx, 'ROWSETTAG' );
+   DBMS_XMLGen.setRowTag( Ctx, 'ROWTAG' );
+   temp_xml := DBMS_XMLGEN.getXML(Ctx);
+--
+        IF temp_xml IS NOT NULL THEN
+            IF xml IS NOT NULL THEN
+                DBMS_LOB.APPEND( xml, temp_xml );
+            ELSE
+                xml := temp_xml;
+            END IF;
+        END IF;
+--
+        DBMS_XMLGEN.closeContext( Ctx );
+        dbms_output.put_line(substr(xml, 1, 1950));
+end;
+
