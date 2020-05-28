@@ -179,7 +179,9 @@ BEGIN
     --
     DBMS_XMLGEN.closeContext( Ctx );
     
+    -- write the xml file into a new file
     v_file := utl_file.fopen (my_dir, filename, 'A');
+    utl_file.put_line(v_file, xml);
     utl_file.fclose(v_file);
 END;
 
@@ -248,5 +250,5 @@ EXEC PKG_2020Main.RM16_forecast();
 
 -- Visualise --
 SELECT * FROM RUN_TABLE;
-SELECT * FROM local_rm16;
+SELECT * FROM local_rm16 WHERE day = TO_CHAR(sysdate + 1 , 'DD/MON/YYYY');
 SELECT * FROM DBP_MESSAGE_LOG WHERE student_id = 'U13305952' ORDER BY MSG_DATE desc;

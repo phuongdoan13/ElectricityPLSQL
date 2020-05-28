@@ -231,35 +231,53 @@ set serveroutput on;
 
 
 
-
-
-
-
-
 DECLARE
-  Ctx               DBMS_XMLGEN.ctxHandle;
-  xml               CLOB := NULL;
-  temp_xml          CLOB := NULL;
-  v_query_date      varchar2(25) := sysdate + 1;
-  QUERY    VARCHAR2(2000) := 'SELECT tni, sum(volume) tni_total 
+  v_file  utl_file.file_type;
+  v_date  VARCHAR2(20) := to_char(sysdate, 'DD-MON-YYYY HH24:MI:SS');
+BEGIN
+v_file := utl_file.fopen (‘<Student_nr>_DIR','laurie.test', 'A');
+  utl_file.put_line(v_file, 'Test print at '||v_date);
+  utl_file.put_line(v_file, 'Test print at '||lpad('laurie',15));
+  utl_file.fclose(v_file);
+END;
+
+ALTER TABLE dbp_parameter
+drop column created
+--RENAME COLUMN modified_by TO modified;
+SELECT * FROM dbp_parameter
+INSERT INTO dbp_parameter(category, code, value, active, modified)
+VALUES ('Date format', 'df2', 'DD/MON/YYYY', 'Y', sysdate);
+
+CREATE OR REPLACE PROCEDURE write_xml
+AS
+    Ctx               DBMS_XMLGEN.ctxHandle;
+    xml               CLOB := NULL;
+    temp_xml          CLOB := NULL;
+    v_query_date      varchar2(25) := TO_CHAR(sysdate + 1, fetch_Param('Date format', 'df2'));
+    QUERY             VARCHAR2(2000) := 'SELECT tni, sum(volume) tni_total 
                               FROM local_rm16
                               WHERE DAY = '''||v_query_date||''' GROUP BY tni';
+    my_dir            VARCHAR2(100) := fetch_Param('my_dir', 'md_final');
+    filename          VARCHAR2(100) := 'U' || fetch_Param('student_id', 'id') || '_' || TO_CHAR(sysdate + 1, fetch_Param('Date format','df1')) || '.xml';
+    v_file            utl_file.file_type;
 BEGIN
-dbms_output.put_line(query);
-   Ctx := DBMS_XMLGEN.newContext(QUERY);
-   DBMS_XMLGen.setRowsetTag( Ctx, 'ROWSETTAG' );
-   DBMS_XMLGen.setRowTag( Ctx, 'ROWTAG' );
-   temp_xml := DBMS_XMLGEN.getXML(Ctx);
---
-        IF temp_xml IS NOT NULL THEN
-            IF xml IS NOT NULL THEN
-                DBMS_LOB.APPEND( xml, temp_xml );
-            ELSE
-                xml := temp_xml;
-            END IF;
+    dbms_output.put_line(query);
+    Ctx := DBMS_XMLGEN.newContext(QUERY);
+    DBMS_XMLGen.setRowsetTag( Ctx, 'ROWSETTAG' );
+    DBMS_XMLGen.setRowTag( Ctx, 'ROWTAG' );
+    temp_xml := DBMS_XMLGEN.getXML(Ctx);
+    --
+    IF temp_xml IS NOT NULL THEN
+        IF xml IS NOT NULL THEN
+            DBMS_LOB.APPEND( xml, temp_xml );
+        ELSE
+            xml := temp_xml;
         END IF;
---
-        DBMS_XMLGEN.closeContext( Ctx );
-        dbms_output.put_line(substr(xml, 1, 1950));
-end;
+    END IF;
+    --
+    DBMS_XMLGEN.closeContext( Ctx );
+    
+    v_file := utl_file.fopen (my_dir, filename, 'A');
+    utl_file.fclose(v_file);
+END;
 
