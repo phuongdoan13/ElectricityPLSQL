@@ -155,7 +155,7 @@ AS
     Ctx               DBMS_XMLGEN.ctxHandle;
     xml               CLOB := NULL;
     temp_xml          CLOB := NULL;
-    v_query_date      varchar2(25) := TO_CHAR(sysdate + 1, fetch_Param('Date format', 'df2'));
+    v_query_date      varchar2(25) := TO_CHAR(TRUNC(sysdate) + 1, fetch_Param('Date format', 'df2'));
     QUERY             VARCHAR2(2000) := 'SELECT tni, sum(volume) tni_total 
                               FROM local_rm16
                               WHERE DAY = '''||v_query_date||''' GROUP BY tni';
